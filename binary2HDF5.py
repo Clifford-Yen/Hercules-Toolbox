@@ -194,8 +194,8 @@ def binaryMesh2HDF5(inputFilePath, dbFolder=os.path.join(os.path.dirname(__file_
     return
 
 if __name__ == '__main__':
-    # /// Change the current working directory to the directory of this file for debugging purpose.
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # DEBUGGING: Change the current working directory to the directory of this file for debugging purpose.
+    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser()
     # Take optional input file path from command line argument.
     # If no input file path is provided, use the default input file path.
