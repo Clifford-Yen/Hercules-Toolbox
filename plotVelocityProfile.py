@@ -6,7 +6,7 @@ import argparse
 import matplotlib.pyplot as plt
 # plt.rcParams.update({'text.usetex': True, 'font.family': 'serif', 'font.serif': ['Computer Modern'], 
 #     'font.size': 13, 'font.weight': 'regular'})
-plt.rcParams.update({'font.size': 14, 'font.weight': 'regular'})
+plt.rcParams.update({'font.size': 13, 'font.weight': 'regular'})
 
 def get_MPI_data(comm=None, size=None, rank=None):
     try:
@@ -25,17 +25,6 @@ def get_MPI_data(comm=None, size=None, rank=None):
         print("mpi4py is not installed. Running the code in a single processor mode.")
         MPI_enabled = False
     return MPI_enabled, comm, size, rank
-
-"""
-NOTE: This function is not used in this script. But this is a good example of 
-how to read an HDF5 file without knowing the group identifiers (names, keys).
-""" 
-# def readHDF5(filePath) -> dict[str, pd.DataFrame]:
-#     df = {}
-#     with pd.HDFStore(filePath, mode='r') as store: 
-#         for key in store.keys():
-#             df[key.strip('/')] = store.get(key)
-#     return df
 
 def getSpacing(pointList: np.ndarray|list[float], returnType='max') -> float:
     pointList.sort()
@@ -127,6 +116,8 @@ def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str
     xMax = df[dirs[0]].max()
     yMin = df[dirs[1]].min()
     yMax = df[dirs[1]].max()
+    # Remove air elements (Vs=1e10, Vp=-1.0, rho=0) as defined in Hercules
+    df = df.loc[(df['Vs'] != 1e10) & (df['Vp'] != -1.0) & (df['rho'] != 0)]
     for i, prop in enumerate(propsTable.keys()):
         scatter = ax[i].scatter(df[dirs[0]], df[dirs[1]], c=df[prop], marker='s', linewidths=0, s=markerSize**2)
         if minorTicksIncluded:
@@ -145,6 +136,29 @@ def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str
     fig.savefig(outputFileName)
     return
 
+def createUserMeshPlane(xmin: float, xmax: float, ymin: float, ymax: float, zmin: float, zmax: float, 
+        spacing: float, zSpacing: float) -> tuple[np.ndarray, str]:
+    # NOTE: The +eps is added to the maximum values to include the last point 
+    # in the mesh plane. Not sure whether there's a better way to do this.
+    eps = np.finfo(np.float32).resolution
+    if xmin == xmax:
+        planeNormal = 'x'
+        y, z = np.mgrid[ymin:ymax+eps:spacing, zmin:zmax+eps:zSpacing]
+        x = np.full_like(y, xmin)
+    elif ymin == ymax:
+        planeNormal = 'y'
+        x, z = np.mgrid[xmin:xmax+eps:spacing, zmin:zmax+eps:zSpacing]
+        y = np.full_like(x, ymin)
+    elif zmin == zmax:
+        planeNormal = 'z'
+        x, y = np.mgrid[xmin:xmax+eps:spacing, ymin:ymax+eps:spacing]
+        z = np.full_like(x, zmin)
+    else:
+        ValueError('The user-defined mesh plane should be either in the x-z or y-z plane.')
+    # Stack the arrays along the last axis to get an array of coordinates
+    userMeshPlane = np.stack((x, y, z), axis=-1).reshape(-1, 3)
+    return userMeshPlane, planeNormal
+
 def plot3DVelocityModel(fileName: str, xmin: float, xmax: float, ymin: float, 
         ymax: float, zmin: float|None = None, zmax: float|None = None, 
         outputFileName='3DVelocityModelProperties.pdf', 
@@ -155,7 +169,7 @@ def plot3DVelocityModel(fileName: str, xmin: float, xmax: float, ymin: float,
         df = df.loc[df['z'] >= zmin]
     if zmax is not None:
         df = df.loc[df['z'] <= zmax]
-    df.loc[:, 'rho'] = df['rho']*1000
+    df.loc[:, 'rho'] = df['rho']*1000.0
     df.columns = ['x', 'y', 'z', 'Vs', 'Vp', 'rho']
     if xmin == xmax:
         planeNormal = 'x'
@@ -194,29 +208,7 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
             spacing = min(xSpacing, ySpacing)
         if zSpacing is None:
             zSpacing = getSpacing(elementsOnPlane['z'].unique(), returnType='min')
-        # if zmax is None:
-        #     # NOTE: Make sure zmax is still a multiple of zSpacing. Otherwise, 
-        #     # the last z point in the mesh plane will exceed zmax of the domain.
-        #     zmax = elementsOnPlane['z'].max()//zSpacing*zSpacing
-        # /// Generate a grid of points
-        # NOTE: The +1 is added to the maximum values to include the last point 
-        # in the mesh plane. Not sure whether there's a better way to do this.
-        if xmin == xmax:
-            planeNormal = 'x'
-            y, z = np.mgrid[ymin:ymax+1:spacing, zmin:zmax+1:zSpacing]
-            x = np.full_like(y, xmin)
-        elif ymin == ymax:
-            planeNormal = 'y'
-            x, z = np.mgrid[xmin:xmax+1:spacing, zmin:zmax+1:zSpacing]
-            y = np.full_like(x, ymin)
-        elif zmin == zmax:
-            planeNormal = 'z'
-            x, y = np.mgrid[xmin:xmax+1:spacing, ymin:ymax+1:spacing]
-            z = np.full_like(x, zmin)
-        else:
-            ValueError('The user-defined mesh plane should be either in the x-z or y-z plane.')
-        # Stack the arrays along the last axis to get an array of coordinates
-        userMeshPlane = np.stack((x, y, z), axis=-1).reshape(-1, 3)
+        userMeshPlane, planeNormal = createUserMeshPlane(xmin, xmax, ymin, ymax, zmin, zmax, spacing, zSpacing)
         print('Extracting velocity profiles to the user-defined mesh plane...')
     else:
         # NOTE: For ranks other than 0, the variables are initialized to None to avoid
@@ -239,15 +231,6 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
     userMeshData = pd.DataFrame(np.zeros((len(userMeshPlane), 6)), columns=['x', 'y', 'z', 'Vs', 'Vp', 'rho'])
     userMeshData[['x', 'y', 'z']] = userMeshPlane
     for i, point in enumerate(tqdm(userMeshPlane, position=rank, desc=f'Processor {rank}')):
-        # NOTE: Since it's rare to have a point at the corner of an element and 
-        # and it increases a bit computation time, the following lines are commented.
-        # # First check whether the point is at any of the corners of the elements
-        # subset = elementsOnPlane.loc[(elementsOnPlane['x'] == point[0]) & (elementsOnPlane['y'] == point[1]) & (elementsOnPlane['z'] == point[2])]
-        # if len(subset) > 0:
-        #     for prop in ['Vs', 'Vp', 'rho']:
-        #         userMeshData.loc[i, prop] = dfMeshData.loc[subset.index][prop].mean()
-        # else:
-        #     # Retrieve the elements that are close to the point
         # NOTE: Searching with maxSpacing/2 is enough to find the elements containing 
         # the point for some cases, which is faster than searching with maxSpacing.
         h = maxSpacing/2

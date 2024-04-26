@@ -3,11 +3,54 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 import progressbar
 import argparse
+import os
+import pygmt
 import matplotlib.pyplot as plt
-# plt.rcParams.update({'text.usetex': True, 'font.family': 'serif', 'font.serif': ['Computer Modern'], 
-#     'font.weight': 'regular'})
+# plt.rcParams.update({'text.usetex': True, 'font.family': 'serif', 
+#     'font.serif': ['Computer Modern'], 'font.weight': 'regular'})
 
-def plotResponseMagnitude(fileName, key, response='velocity', fps=None):
+def getDataFromInputFile(inputFilePath: str) -> dict:
+    ''' getDataFromInputFile returns a dict with all Hercules'
+    parameters as the dict keys and values as the dict values. '''
+    with open(inputFilePath) as f:
+        lines = f.readlines()
+        lines = [line.rstrip().split('=') for line in lines if (line[0] != '#' and line.rstrip() != '')]
+    inputData = {}
+    heldKey = None
+    for line in lines:
+        if len(line) == 2 and line[1] != '':
+            inputData[line[0].rstrip()] = line[1].lstrip()
+            heldKey = None
+        elif len(line) == 2 and line[1] == '':
+            heldKey = line[0].rstrip()
+            inputData[line[0].rstrip()] = []
+        elif len(line) == 1:
+            inputData[heldKey].append(line[0].split())
+        else:
+            raise ValueError('Unexpected input file format.')
+    return inputData
+
+def plotMap(mapFile='map.png'):
+    # If the map file exists, return
+    if os.path.exists(mapFile):
+        return
+    inputData = getDataFromInputFile('inputfiles/parameters.in')
+    domainCorners = inputData['domain_surface_corners']
+    region = [float(domainCorners[0][0]), float(domainCorners[2][0]), float(domainCorners[0][1]), float(domainCorners[2][1])]
+    fig = pygmt.Figure()
+    # Download grids of topography and bathymetry in the region
+    grid = pygmt.datasets.load_earth_relief(resolution='01s', region=region, registration='gridline')
+    # Plot the grid using the geo colormap and shading
+    fig.grdimage(grid=grid, region=region, projection="M6i", cmap='geo', shading=True)
+    # Add coastlines of the region to Los Angeles to a 6 inch (6i) wide map using the Mercator projection (M)
+    fig.coast(shorelines='1/0.5p', region=region, projection="M6i")
+    # Initialize the map frame with automatic tick intervals (a) and fancy frame (f, which includes geographical gridlines)
+    # fig.basemap(frame='af')
+    fig.savefig('map.png')
+    return
+
+def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, 
+        fps=24, includeMap=False, mapFile='map.png'):
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
@@ -45,52 +88,86 @@ def plotResponseMagnitude(fileName, key, response='velocity', fps=None):
     df['response'] = (df['u']**2 + df['v']**2 + df['w']**2)**0.5
     # Create a figure and axis for the animation
     fig, ax = plt.subplots()
-    # Set the axis limits
-    ax.set_xlim(df['y'].min(), df['y'].max())
-    ax.set_ylim(df['x'].min(), df['x'].max())
+    if includeMap:
+        plotMap(mapFile)
+        map = plt.imread(mapFile)
+        # Set the fig size of the plot based on the map
+        colorbarWidth = 1.5 # TODO: This is an estimate. May find a better way to calculate this
+        fig.set_size_inches(5+colorbarWidth, map.shape[0]/map.shape[1]*5)
+        # Set the axis limits
+        ax.set_xlim(df['y'].min(), df['y'].max())
+        ax.set_ylim(df['x'].min(), df['x'].max())
+        # Plot the map
+        ax.imshow(map, extent=ax.get_xlim()+ax.get_ylim(), aspect='auto')
     x = df['y'].drop_duplicates()
     y = df['x'].drop_duplicates()
-    levels = np.linspace(0, df['response'].max(), 100)
+    cm = plt.cm.ScalarMappable(cmap='jet')
+    if response == 'velocity':
+        levels = np.linspace(0.01, maxVel, 101, endpoint=True)
+        cm.set_clim(levels[0], levels[-1])
+        cb = plt.colorbar(cm, ax=ax, extend='max')
+    else:
+        levels = np.linspace(0, df['response'].max(), 100, endpoint=True)
+        cm.set_clim(levels[0], levels[-1])
+        cb = plt.colorbar(cm, ax=ax)
+    # Update the colorbar ticks
+    ticks = cb.get_ticks()
+    ticks = ticks[(ticks > levels[0]) & (ticks < levels[-1])]
+    ticks = [levels[0], *ticks, levels[-1]]
+    cb.set_ticks(ticks)
+    # Plot the first frame
     frame_data = df[df['timeStep'] == 0]
-    contour = ax.contourf(x, y, frame_data.pivot(index='x', columns='y', values='response'), levels=levels)
-    plt.xlabel('$y$')
-    plt.ylabel('$x$')
-    plt.colorbar(contour)
+    contour = ax.contourf(x, y, frame_data.pivot(index='x', columns='y', values='response'), 
+        levels=levels, cmap='jet', extend='max', alpha=0.5, antialiased=True)
+    plt.xlabel('y ($m$)')
+    plt.ylabel('x ($m$)')
     plt.title(title)
     # plt.grid(True)
     # plt.show()
     # ===== Define the update function for the animation =====
     def update(frame):
+        # Clear the previous frame
+        ax.clear()
+        if includeMap:
+            # Set the axis limits
+            ax.set_xlim(df['y'].min(), df['y'].max())
+            ax.set_ylim(df['x'].min(), df['x'].max())
+            # Plot the map
+            ax.imshow(map, extent=ax.get_xlim()+ax.get_ylim(), aspect='auto')
         # Get the data for the current frame
         frame_data = df[df['timeStep'] == frame]
         # Turn frame_data['displacement'] into 2D array
-        displacementMagnitude = frame_data.pivot(index='x', columns='y', values='response')
+        responseMagnitude = frame_data.pivot(index='x', columns='y', values='response')
         # Create a 2D contour plot of the displacement magnitude
-        contour = ax.contourf(x, y, displacementMagnitude, levels=levels)
-        # plt.title(title+', Time: {:.2f} s'.format(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
-        fig.axes[1].set(title='Time: {:.2f} s'.format(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
+        contour = ax.contourf(x, y, responseMagnitude, levels=levels, cmap='jet', 
+            extend='max', alpha=0.5, antialiased=True)
+        plt.title(title+', Time: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
+        # fig.axes[1].set(title+', Time: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
         return contour,
     # Create the animation
     print('Creating animation...')
-    animation = FuncAnimation(fig, update, frames=progressbar.progressbar(df['timeStep'].unique()), blit=True, cache_frame_data=False)
-    if fps is None:
-        animation.save(response+'.mp4', writer='ffmpeg')
-    else:  
-        animation.save(response+'.mp4', writer='ffmpeg', fps=fps)
+    animation = FuncAnimation(fig, func=update, frames=progressbar.progressbar(df['timeStep'].unique()), 
+        blit=True, cache_frame_data=False)
+    animation.save(response+'_'+key+'.mp4', writer='ffmpeg', fps=fps)
 
 if __name__ == '__main__':
-    # /// Change the working directory to the directory of this file for debugging
-    import os
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # DEBUGGING: Change the working directory to the directory of this file for debugging
+    # import os
+    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser()
     helpString = "The quantity to be plotted. It can be 'displacement' or 'velocity'. Default is 'velocity'."
-    parser.add_argument('quanity', nargs='?', help=helpString, default='velocity')
-    parser.add_argument('--fps', '-f', type=int, help='Frames per second. Default is 10.', default=10)
-    quantity = parser.parse_args().quanity
-    fps = parser.parse_args().fps
+    parser.add_argument('quantity', nargs='?', help=helpString, default='velocity')
+    parser.add_argument('--fps', '-f', type=int, help='Frames per second. Default is 24.', default=24)
+    parser.add_argument('--map', '-m', action='store_true', help='Plot on the provided map. Default is False.')
+    parser.add_argument('--maxVelocity', '-v', type=float, help='Maximum velocity for the colorbar. Default is 0.5 (m/s).', default=0.5)
+    args = parser.parse_args()
+    fps = args.fps
     if fps is not None and fps < 1:
         raise ValueError('fps should be greater than 0.')
     
     fileName = 'database/planedisplacements.hdf5'
-    key = 'plane0'
-    plotResponseMagnitude(fileName, key, response=quantity, fps=fps)
+    planesData = pd.read_hdf(fileName, key='/planesData')
+    for index in planesData.index:
+        key = 'plane'+str(index)
+        plotResponseMagnitude(fileName, key, response=args.quantity, 
+            maxVel=args.maxVelocity, fps=fps, includeMap=args.map)
