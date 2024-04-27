@@ -6,8 +6,8 @@ import argparse
 import os
 import pygmt
 import matplotlib.pyplot as plt
-# plt.rcParams.update({'text.usetex': True, 'font.family': 'serif', 
-#     'font.serif': ['Computer Modern'], 'font.weight': 'regular'})
+plt.rcParams.update({'font.family': 'serif', 
+    'font.serif': ['Courier New'], 'font.weight': 'regular'})
 
 def getDataFromInputFile(inputFilePath: str) -> dict:
     ''' getDataFromInputFile returns a dict with all Hercules'
@@ -54,9 +54,9 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
-        title = 'Displacement Magnitude ($m$)'
+        title = 'Displacement Magnitude (m)'
     elif response == 'velocity':
-        title = 'Velocity Magnitude ($m/s$)'
+        title = 'Velocity Magnitude (m/s)'
         timePoints = df['time'].unique()
         df_uniqueNodes = df.drop_duplicates(subset=['x', 'y', 'z'])
         print('Computing velocity...')
@@ -88,17 +88,6 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
     df['response'] = (df['u']**2 + df['v']**2 + df['w']**2)**0.5
     # Create a figure and axis for the animation
     fig, ax = plt.subplots()
-    if includeMap:
-        plotMap(mapFile)
-        map = plt.imread(mapFile)
-        # Set the fig size of the plot based on the map
-        colorbarWidth = 1.5 # TODO: This is an estimate. May find a better way to calculate this
-        fig.set_size_inches(5+colorbarWidth, map.shape[0]/map.shape[1]*5)
-        # Set the axis limits
-        ax.set_xlim(df['y'].min(), df['y'].max())
-        ax.set_ylim(df['x'].min(), df['x'].max())
-        # Plot the map
-        ax.imshow(map, extent=ax.get_xlim()+ax.get_ylim(), aspect='auto')
     x = df['y'].drop_duplicates()
     y = df['x'].drop_duplicates()
     cm = plt.cm.ScalarMappable(cmap='jet')
@@ -107,7 +96,7 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
         cm.set_clim(levels[0], levels[-1])
         cb = plt.colorbar(cm, ax=ax, extend='max')
     else:
-        levels = np.linspace(0, df['response'].max(), 100, endpoint=True)
+        levels = np.linspace(0.01, df['response'].max().round(2), 100, endpoint=True)
         cm.set_clim(levels[0], levels[-1])
         cb = plt.colorbar(cm, ax=ax)
     # Update the colorbar ticks
@@ -115,39 +104,41 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
     ticks = ticks[(ticks > levels[0]) & (ticks < levels[-1])]
     ticks = [levels[0], *ticks, levels[-1]]
     cb.set_ticks(ticks)
-    # Plot the first frame
-    frame_data = df[df['timeStep'] == 0]
-    contour = ax.contourf(x, y, frame_data.pivot(index='x', columns='y', values='response'), 
-        levels=levels, cmap='jet', extend='max', alpha=0.5, antialiased=True)
-    plt.xlabel('y ($m$)')
-    plt.ylabel('x ($m$)')
-    plt.title(title)
-    # plt.grid(True)
-    # plt.show()
+    # Include the map if required
+    if includeMap:
+        plotMap(mapFile)
+        map = plt.imread(mapFile)
+        # Set the fig size of the plot based on the map
+        colorbarWidth = 1.2 # TODO: This is an estimate. May find a better way to calculate this
+        fig.set_size_inches(5+colorbarWidth, map.shape[0]/map.shape[1]*5)
+        # Set the axis limits. This is not necessary if the map is not included
+        # since ax.contourf will automatically set the axis limits
+        ax.set_xlim(df['y'].min(), df['y'].max())
+        ax.set_ylim(df['x'].min(), df['x'].max())
+        extent = ax.get_xlim() + ax.get_ylim()
     # ===== Define the update function for the animation =====
-    def update(frame):
-        # Clear the previous frame
-        ax.clear()
-        if includeMap:
-            # Set the axis limits
-            ax.set_xlim(df['y'].min(), df['y'].max())
-            ax.set_ylim(df['x'].min(), df['x'].max())
-            # Plot the map
-            ax.imshow(map, extent=ax.get_xlim()+ax.get_ylim(), aspect='auto')
+    def updateFrame(frame):
+        ax.clear() # Clear the previous frame
+        if includeMap: # Plot the map
+            ax.imshow(map, extent=extent, aspect='auto')
         # Get the data for the current frame
         frame_data = df[df['timeStep'] == frame]
         # Turn frame_data['displacement'] into 2D array
         responseMagnitude = frame_data.pivot(index='x', columns='y', values='response')
         # Create a 2D contour plot of the displacement magnitude
-        contour = ax.contourf(x, y, responseMagnitude, levels=levels, cmap='jet', 
-            extend='max', alpha=0.5, antialiased=True)
-        plt.title(title+', Time: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
-        # fig.axes[1].set(title+', Time: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
+        contour = ax.contourf(x, y, responseMagnitude, levels=levels, cmap='jet', extend='max')
+        if includeMap:
+            contour.set_alpha(0.5)
+            contour.set_antialiased(True)
+        plt.title(title+'\nTime: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
         return contour,
+    # ===== Define the initialization function for the animation =====
+    def plotFirstFrame():
+        return updateFrame(frame=0)
     # Create the animation
     print('Creating animation...')
-    animation = FuncAnimation(fig, func=update, frames=progressbar.progressbar(df['timeStep'].unique()), 
-        blit=True, cache_frame_data=False)
+    animation = FuncAnimation(fig, func=updateFrame, frames=progressbar.progressbar(df['timeStep'].unique()), 
+        init_func=plotFirstFrame, blit=True, cache_frame_data=False)
     animation.save(response+'_'+key+'.mp4', writer='ffmpeg', fps=fps)
 
 if __name__ == '__main__':
