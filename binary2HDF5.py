@@ -179,9 +179,11 @@ def binaryMesh2HDF5(inputFilePath, dbFolder='database'):
 if __name__ == '__main__':
     # DEBUGGING: Change the current working directory to the directory of this file for debugging purpose.
     # os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    parser = argparse.ArgumentParser()
-    # Take optional input file path from command line argument.
-    # If no input file path is provided, use the default input file path.
+    parser = argparse.ArgumentParser(prog='binary2HDF5',
+        description="Convert Hercules' binary files to HDF5 format. The generated \
+            HDF5 files will be stored in the 'database' folder and can be used \
+            for making velocity/displacement propagation animations or plotting \
+            velocity profiles.")
     inputFileHelp = 'Path to the input file. Default: inputfiles/parameters.in'
     parser.add_argument('inputFilePath', nargs='?', help=inputFileHelp, default='inputfiles/parameters.in')
     binaryTypeHelp = "Type of the binary file. Default is 'plane', and another option is 'mesh'."

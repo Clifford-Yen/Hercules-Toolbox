@@ -264,7 +264,7 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
                     # /// For a faster result, use the first element that contains the point
                     if method == 'fast':
                         for prop in ['Vs', 'Vp', 'rho']:
-                            userMeshData.loc[i, prop] = dfMeshData.loc[geid][prop]
+                            userMeshData.loc[i, prop] = dfMeshData.loc[geid, prop]
                         break
                     # /// For a more accurate result, use the smallest element to represent the point
                     elif method == 'accurate':
@@ -294,8 +294,8 @@ if __name__ == '__main__':
     # DEBUGGING: Change the current working directory to the directory of this file for debugging purpose.
     # import os
     # os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog='plotVelocityProfile', 
+        description='Plot the velocity profile with the user-defined mesh plane.')
     dimensionsHelp = 'The dimensions of the user-defined mesh plane. The order is \
         xmin, xmax, ymin, ymax, zmin, and zmax. If zmin and zmax are not provided, \
         the zmin is set to 0 and the zmax is set to the maximum z value in the mesh \

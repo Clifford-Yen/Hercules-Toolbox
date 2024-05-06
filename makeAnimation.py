@@ -44,13 +44,11 @@ def plotMap(mapFile='map.png'):
     fig.grdimage(grid=grid, region=region, projection="M6i", cmap='geo', shading=True)
     # Add coastlines of the region to Los Angeles to a 6 inch (6i) wide map using the Mercator projection (M)
     fig.coast(shorelines='1/0.5p', region=region, projection="M6i")
-    # Initialize the map frame with automatic tick intervals (a) and fancy frame (f, which includes geographical gridlines)
-    # fig.basemap(frame='af')
     fig.savefig('map.png')
     return
 
 def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, 
-        fps=24, includeMap=False, mapFile='map.png'):
+        fps=24, includeMap=False, mapFile='map.png', **kwargs):
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
@@ -145,20 +143,22 @@ if __name__ == '__main__':
     # DEBUGGING: Change the working directory to the directory of this file for debugging
     # import os
     # os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    parser = argparse.ArgumentParser()
-    helpString = "The quantity to be plotted. It can be 'displacement' or 'velocity'. Default is 'velocity'."
-    parser.add_argument('quantity', nargs='?', help=helpString, default='velocity')
+    parser = argparse.ArgumentParser(prog='makeAnimation', 
+        description='Create an animation of the velocity/displacement propagation in the domain.')
+    helpString = "The response to be plotted. It can be 'displacement' or 'velocity'. Default is 'velocity'."
+    parser.add_argument('response', nargs='?', help=helpString, default='velocity')
     parser.add_argument('--fps', '-f', type=int, help='Frames per second. Default is 24.', default=24)
-    parser.add_argument('--map', '-m', action='store_true', help='Plot on the provided map. Default is False.')
-    parser.add_argument('--maxVelocity', '-v', type=float, help='Maximum velocity for the colorbar. Default is 0.5 (m/s).', default=0.5)
+    parser.add_argument('--includeMap', '-m', action='store_true', help='Plot on the provided map. Default is False.')
+    parser.add_argument('--maxVel', '-v', type=float, help='Maximum velocity for the colorbar. Default is 0.5 (m/s).', default=0.5)
+    parser.add_argument('--numPlanes', '-n', type=int, help='Number of planes to plot. Default is 1 (only plane0 will be plotted).', default=1)
     args = parser.parse_args()
-    fps = args.fps
-    if fps is not None and fps < 1:
+    if args.fps is not None and args.fps < 1:
         raise ValueError('fps should be greater than 0.')
     
     fileName = 'database/planedisplacements.hdf5'
     planesData = pd.read_hdf(fileName, key='/planesData')
     for index in planesData.index:
+        if index >= args.numPlanes:
+            break
         key = 'plane'+str(index)
-        plotResponseMagnitude(fileName, key, response=args.quantity, 
-            maxVel=args.maxVelocity, fps=fps, includeMap=args.map)
+        plotResponseMagnitude(fileName, key, **vars(args))

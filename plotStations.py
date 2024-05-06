@@ -85,8 +85,8 @@ def plotAndSaveResults(locations: dict[str, dict[str, int]], stations: dict[int,
 if __name__ == '__main__':
     # DEBUGGING: Change the current working directory to the directory of this file for debugging purpose.
     # os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog='plotStations', 
+        description='Plot the responses at the stations stored in the outputfiles/stations folder.')
     stationsHelp = 'The station names to each station file in the stations folder \
         in the ascending order of the station number. The station number is the \
         number in the station file name after the dot. Type the station names \
