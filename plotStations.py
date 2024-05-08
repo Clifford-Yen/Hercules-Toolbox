@@ -87,19 +87,17 @@ if __name__ == '__main__':
     # os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser(prog='plotStations', 
         description='Plot the responses at the stations stored in the outputfiles/stations folder.')
-    stationsHelp = 'The station names to each station file in the stations folder \
-        in the ascending order of the station number. The station number is the \
-        number in the station file name after the dot. Type the station names \
-        separated by commas. If not provided, the station numbers will be used \
-        as the station names.'
-    parser.add_argument('stations', type=str, nargs='?', help=stationsHelp)
+    stationsHelp = 'The names to each file in the stations folder in the ascending \
+        order of the station number. The station number is the number in the \
+        station file name after the dot. Type the station names separated with spaces. \
+        If not provided, the station numbers will be used as the station names.'
+    parser.add_argument('stations', type=str, nargs='*', help=stationsHelp)
     parser.add_argument('--cutOffFrequency', '-f', type=float, default=None, 
         help='The cut-off frequency for the low-pass filter. Default is None.')
     args = parser.parse_args()
     stationNames = parser.parse_args().stations
     stations = getTimeHistoryFromStation()
     if stationNames is not None:
-        stationNames = stationNames.split(',')
         locations = dict(zip(stationNames, stations.keys()))
         if len(stationNames) < len(stations):
             for key in list(stations.keys())[len(stationNames):]:
