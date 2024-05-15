@@ -76,7 +76,7 @@ def getDisplacementHistory(pathToBinaryFile, planeData, deltaT, columns=['timeSt
     df['timeStep'] = df['timeStep'].astype(int)
     return df
 
-def binaryPlane2HDF5(inputFilePath, dbFolder='database'):
+def binaryPlane2HDF5(inputFilePath, dbFolder='database', defaultPlanesDirectory='outputfiles/planes'):
     binaryFileName='planedisplacements' # NOTE: binaryFileName should not include .0 or .1, etc.
     inputData = getDataFromInputFile(inputFilePath)
     # NOTE: Convert strings to floats first, then convert the floats to integers by using the built-in is_integer() function.
@@ -98,9 +98,13 @@ def binaryPlane2HDF5(inputFilePath, dbFolder='database'):
     df.to_hdf(dbPath, key='planesData', mode='w')
     df = pd.DataFrame(domainSurfaceCorners, columns=['x', 'y'])
     df.to_hdf(dbPath, key='domainSurfaceCorners', mode='a')
+    if 'output_planes_directory' in inputData.keys():
+        planesDirectory = inputData['output_planes_directory']
+    else:
+        planesDirectory = defaultPlanesDirectory
     print('Processing planes...')
     for i, planeData in enumerate(progressbar.progressbar(planesData)):
-        pathToBinaryFile = os.path.join(inputData['output_planes_directory'], binaryFileName+'.%i'%i)
+        pathToBinaryFile = os.path.join(planesDirectory, binaryFileName+'.%i'%i)
         if not os.path.exists(pathToBinaryFile):
             continue
         df = getDisplacementHistory(pathToBinaryFile, planeData, deltaT)
@@ -141,11 +145,14 @@ def getMeshData(meshDataFiles, meshFolder):
         for meshDataFile in progressbar.progressbar(meshDataFiles)])
     return finalArray
 
-def binaryMesh2HDF5(inputFilePath, dbFolder='database'):
+def binaryMesh2HDF5(inputFilePath, dbFolder='database', defaultMeshFolder='outputfiles/For_Matlab'):
     coordinateFileName = 'mesh_coordinates'
     meshDataFileName = 'mesh_data'
     inputData = getDataFromInputFile(inputFilePath)
-    meshFolder = inputData['mesh_coordinates_directory_for_matlab']
+    if 'mesh_coordinates_directory_for_matlab' in inputData.keys():
+        meshFolder = inputData['mesh_coordinates_directory_for_matlab']
+    else:
+        meshFolder = defaultMeshFolder
     coordinateFiles = [fileName for fileName in os.listdir(meshFolder) if fileName.startswith(coordinateFileName)]
     coordinateFiles.sort()
     meshDataFiles = [fileName for fileName in os.listdir(meshFolder) if fileName.startswith(meshDataFileName)]
