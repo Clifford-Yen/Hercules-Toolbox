@@ -3,8 +3,7 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 import progressbar
 import argparse
-import os
-import pygmt
+from plotMap import plotMap
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.family': 'serif', 
     'font.serif': ['Courier New'], 'font.weight': 'regular'})
@@ -30,25 +29,9 @@ def getDataFromInputFile(inputFilePath: str) -> dict:
             raise ValueError('Unexpected input file format.')
     return inputData
 
-def plotMap(mapFile='map.png'):
-    # If the map file exists, return
-    if os.path.exists(mapFile):
-        return
-    inputData = getDataFromInputFile('inputfiles/parameters.in')
-    domainCorners = inputData['domain_surface_corners']
-    region = [float(domainCorners[0][0]), float(domainCorners[2][0]), float(domainCorners[0][1]), float(domainCorners[2][1])]
-    fig = pygmt.Figure()
-    # Download grids of topography and bathymetry in the region
-    grid = pygmt.datasets.load_earth_relief(resolution='01s', region=region, registration='gridline')
-    # Plot the grid using the geo colormap and shading
-    fig.grdimage(grid=grid, region=region, projection="M6i", cmap='geo', shading=True)
-    # Add coastlines of the region to Los Angeles to a 6 inch (6i) wide map using the Mercator projection (M)
-    fig.coast(shorelines='1/0.5p', region=region, projection="M6i")
-    fig.savefig('map.png')
-    return
-
-def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, 
-        fps=24, includeMap=False, mapFile='map.png', **kwargs):
+def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, fps=24, 
+        includeMap=False, mapFile='map.png', threeDMagnitude=False, 
+        parameterFile='inputfiles/parameters.in', **kwargs):
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
@@ -56,14 +39,35 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
     elif response == 'velocity':
         title = 'Velocity Magnitude (m/s)'
         timePoints = df['time'].unique()
-        df_uniqueNodes = df.drop_duplicates(subset=['x', 'y', 'z'])
         print('Computing velocity...')
+        # ===== The fastest way to compute the gradient with pivot table =====
+        # Create a pivot table to reshape the DataFrame
+        # NOTE: the ``pivot`` method reshapes the DataFrame into a 3D structure 
+        # where the index is the timeStep, and the columns are a MultiIndex of x,
+        # y, and z. By doing so, we can compute the gradient for each component 
+        # at all nodes simultaneously. This is much faster than looping through
+        # each node and computing the gradient one by one.
+        # Also note that, although ``pivot_table`` can also be used here, it will 
+        # aggregate the values if there are multiple values for the same index/column
+        # instead of raising an error. This is not what we want. There shouldn't 
+        # be multiple values for the same index/column in this case.
+        # NOTE 2: since we don't really need the 'time' column, it's dropped here.
+        df_pivot = df.pivot(index='timeStep', columns=['x', 'y', 'z'], values=['u', 'v', 'w'])
+        # Compute the gradient for each component
+        for component in progressbar.progressbar(['u', 'v', 'w']):
+            df_pivot.loc[:, component] = np.gradient(df_pivot.loc[:, component], timePoints, axis=0)
+        # Flatten the pivot table back to the original DataFrame structure
+        # NOTE: set future_stack=True to avoid the warning message
+        df = df_pivot.stack(['x', 'y', 'z'], future_stack=True).reset_index()
+        # Reclaim memory by getting rid of the pivot table
+        del df_pivot
         # ===== An even faster way (by slicing the DataFrame) =====
-        numUniqueNodes = len(df_uniqueNodes)
-        for i in progressbar.progressbar(range(numUniqueNodes)):
-            df_subset = df.iloc[i::numUniqueNodes]
-            for column in ['u', 'v', 'w']:
-                df.loc[df_subset.index, column] = np.gradient(df.loc[df_subset.index, column], timePoints)
+        # df_uniqueNodes = df.drop_duplicates(subset=['x', 'y', 'z'])
+        # numUniqueNodes = len(df_uniqueNodes)
+        # for i in progressbar.progressbar(range(numUniqueNodes)):
+        #     df_subset = df.iloc[i::numUniqueNodes]
+        #     for column in ['u', 'v', 'w']:
+        #         df.loc[df_subset.index, column] = np.gradient(df.loc[df_subset.index, column], timePoints)
         # ===== Faster, but only applicable to Hercules' current plane output format =====
         # for i in progressbar.progressbar(range(len(df_uniqueNodes))):
         #     row = df_uniqueNodes.iloc[i]
@@ -83,7 +87,12 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
         #     for column in ['u', 'v', 'w']:
         #         df.loc[df_subset.index, column] = np.gradient(df.loc[df_subset.index, column], timePoints)
         #     bar.update(len(processedIndices))
-    df['response'] = (df['u']**2 + df['v']**2 + df['w']**2)**0.5
+    if threeDMagnitude:
+        # /// Magnitude of 3 directional responses
+        df['response'] = (df['u']**2 + df['v']**2 + df['w']**2)**0.5
+    else:
+        # /// Magnitude of 2 (horizontal) directional responses
+        df['response'] = (df['u']**2 + df['v']**2)**0.5
     # Create a figure and axis for the animation
     fig, ax = plt.subplots()
     x = df['y'].drop_duplicates()
@@ -104,7 +113,7 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
     cb.set_ticks(ticks)
     # Include the map if required
     if includeMap:
-        plotMap(mapFile)
+        plotMap(mapFile, parameterFile, overwriteExisting=False, includeTopography=True, useColorMap=True)
         map = plt.imread(mapFile)
         # Set the fig size of the plot based on the map
         colorbarWidth = 1.2 # TODO: This is an estimate. May find a better way to calculate this
@@ -128,7 +137,7 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5,
         if includeMap:
             contour.set_alpha(0.5)
             contour.set_antialiased(True)
-        plt.title(title+'\nTime: %6.2f s'%(df.loc[df['timeStep'] == frame, 'time'].iloc[0]))
+        plt.title(title+'\nTime: %6.2f s'%(timePoints[frame]))
         return contour,
     # ===== Define the initialization function for the animation =====
     def plotFirstFrame():
@@ -148,9 +157,12 @@ if __name__ == '__main__':
     helpString = "The response to be plotted. It can be 'displacement' or 'velocity'. Default is 'velocity'."
     parser.add_argument('response', nargs='?', help=helpString, default='velocity')
     parser.add_argument('--fps', '-f', type=int, help='Frames per second. Default is 24.', default=24)
+    inputFileHelp = 'Path to the input file. Default: inputfiles/parameters.in'
+    parser.add_argument('--parameterFile', '-i', type=str, help=inputFileHelp, default='inputfiles/parameters.in')
     parser.add_argument('--includeMap', '-m', action='store_true', help='Plot on the provided map. Default is False.')
     parser.add_argument('--maxVel', '-v', type=float, help='Maximum velocity for the colorbar. Default is 0.5 (m/s).', default=0.5)
     parser.add_argument('--numPlanes', '-n', type=int, help='Number of planes to plot. Default is 1 (only plane0 will be plotted).', default=1)
+    parser.add_argument('--threeDMagnitude', '-t', action='store_true', help='Plot the magnitude of 3 directional responses. Default is False (only horizontal responses).')
     args = parser.parse_args()
     if args.fps is not None and args.fps < 1:
         raise ValueError('fps should be greater than 0.')

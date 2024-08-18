@@ -87,7 +87,6 @@ def binaryPlane2HDF5(inputFilePath, dbFolder='database', defaultPlanesDirectory=
     planesData = [[int(x) if x.is_integer() else x for x in plane] for plane in planesData]
     # Remove the planes that are not considered in the analysis
     planesData = planesData[:int(inputData['number_output_planes'])]
-    domainSurfaceCorners = [[float(x) for x in corner] for corner in inputData['domain_surface_corners']]
     deltaT = int(inputData['output_planes_print_rate']) * float(inputData['simulation_delta_time_sec'])
     # Create dbFolder if it does not exist.
     if not os.path.exists(dbFolder):
@@ -96,8 +95,6 @@ def binaryPlane2HDF5(inputFilePath, dbFolder='database', defaultPlanesDirectory=
     backupAndRemoveFile(dbPath)
     df = pd.DataFrame(planesData, columns=['x', 'y', 'z', 'dx', 'nx', 'dy', 'ny', 'strk', 'dp'])
     df.to_hdf(dbPath, key='planesData', mode='w')
-    df = pd.DataFrame(domainSurfaceCorners, columns=['x', 'y'])
-    df.to_hdf(dbPath, key='domainSurfaceCorners', mode='a')
     if 'output_planes_directory' in inputData.keys():
         planesDirectory = inputData['output_planes_directory']
     else:
@@ -195,8 +192,9 @@ if __name__ == '__main__':
     parser.add_argument('inputFilePath', nargs='?', help=inputFileHelp, default='inputfiles/parameters.in')
     binaryTypeHelp = "Type of the binary file. Default is 'plane', and another option is 'mesh'."
     parser.add_argument('--binaryType', '-t', help=binaryTypeHelp, default='plane')
-    inputFilePath = parser.parse_args().inputFilePath
-    binaryType = parser.parse_args().binaryType
+    args = parser.parse_args()
+    inputFilePath = args.inputFilePath
+    binaryType = args.binaryType
     with Timer():
         if binaryType == 'plane':
             binaryPlane2HDF5(inputFilePath)

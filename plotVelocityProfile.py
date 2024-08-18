@@ -98,7 +98,7 @@ def getElementsOnPlane(df: pd.DataFrame, xmin: float, xmax: float, ymin: float, 
 
 def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str = 'properties.pdf', 
         minorTicksIncluded: bool = False) -> None:
-    propsTable = {'Vs': '$V_s\ (m/s)$', 'Vp': '$V_p\ (m/s)$', 'rho': '$\\rho\ (kg/m^3)$'}
+    propsTable = {'Vs': r'$V_s\ (m/s)$', 'Vp': r'$V_p\ (m/s)$', 'rho': r'$\rho\ (kg/m^3)$'}
     fig, ax = plt.subplots(1, 3, figsize=(20, 5))
     fig.set_tight_layout(True)
     if planeNormal == 'x':
@@ -127,8 +127,8 @@ def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str
         ax[i].set_yticks(np.append(ax[i].get_yticks(), [yMin, yMax]))
         ax[i].set_xlim(xMin, xMax)
         ax[i].set_ylim(yMin, yMax)
-        ax[i].set_xlabel('$%s\ (m)$'%dirs[0])
-        ax[i].set_ylabel('$%s\ (m)$'%dirs[1])
+        ax[i].set_xlabel(r'$%s\ (m)$'%dirs[0])
+        ax[i].set_ylabel(r'$%s\ (m)$'%dirs[1])
         ax[i].set_title(propsTable[prop])
         if planeNormal != 'z':
             ax[i].invert_yaxis()

@@ -52,16 +52,16 @@ def getTimeHistoryFromStation(stationFolder: str = './outputfiles/stations') -> 
         stationNum = int(stationFileName.split('.')[1])
         stationFile = getFileWithoutUnnecessaryHeading(os.path.join(stationFolder, stationFileName))
         # NOTE: The 'delim_whitespace' keyword in pd.read_csv is deprecated and will be removed in a future version. Use ``sep='\s+'`` instead
-        df = pd.read_csv(stationFile, sep='\s+', index_col='Time(s)')
+        df = pd.read_csv(stationFile, sep=r'\s+', index_col='Time(s)')
         stations[stationNum] = df
     return stations
 
 def plotAndSaveResults(locations: dict[str, dict[str, int]], stations: dict[int, pd.DataFrame], 
-        outputFolder: str='./outputfiles/timeHistories', 
-        cutoffFrequency: float|None = None, filterOrder: float=3) -> None:
-    columnSeries = {'Displacement ($m$)': {'$u$': 'X|(m)', '$v$': 'Y-(m)', '$w$': 'Z.(m)'},
-        'Velocity ($m/s$)': {'$\dot{u}$': 'X|(m/s)', '$\dot{v}$': 'Y-(m/s)', '$\dot{w}$': 'Z.(m/s)'},
-        'Acceleration ($m/s^2$)': {'$\ddot{u}$': 'X|(m/s2)', '$\ddot{v}$': 'Y-(m/s2)', '$\ddot{w}$': 'Z.(m/s2)'}}
+        outputFolder: str = 'outputfiles/timeHistories', 
+        cutoffFrequency: float|None = None, filterOrder: float = 3) -> None:
+    columnSeries = {'Displacement ($m$)': {r'$u$': 'X|(m)', r'$v$': 'Y-(m)', r'$w$': 'Z.(m)'},
+        'Velocity ($m/s$)': {r'$\dot{u}$': 'X|(m/s)', r'$\dot{v}$': 'Y-(m/s)', r'$\dot{w}$': 'Z.(m/s)'},
+        'Acceleration ($m/s^2$)': {r'$\ddot{u}$': 'X|(m/s2)', r'$\ddot{v}$': 'Y-(m/s2)', r'$\ddot{w}$': 'Z.(m/s2)'}}
     # Create the outputFolder if it does not exist
     if not os.path.exists(outputFolder):
         os.makedirs(outputFolder)
@@ -79,8 +79,8 @@ def plotAndSaveResults(locations: dict[str, dict[str, int]], stations: dict[int,
                 axes[i, j].set(title=title)
                 axes[-1, j].set(xlabel='Time ($s$)')
             axes[i, 0].set(ylabel=quantity)
-        fig.suptitle('Station '+locationName, y=0.95)
-        fig.savefig(os.path.join(outputFolder, locationName+'.pdf'))
+        fig.suptitle('Station '+str(locationName), y=0.95)
+        fig.savefig(os.path.join(outputFolder, str(locationName)+'.pdf'))
 
 if __name__ == '__main__':
     # DEBUGGING: Change the current working directory to the directory of this file for debugging purpose.
