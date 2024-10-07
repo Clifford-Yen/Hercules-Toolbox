@@ -234,7 +234,7 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
         # NOTE: Searching with maxSpacing/2 is enough to find the elements containing 
         # the point for some cases, which is faster than searching with maxSpacing.
         h = maxSpacing/2
-        while userMeshData.loc[i, 'Vs'] == 0 and h <= maxSpacing:
+        while userMeshData.loc[i, 'rho'] == 0 and h <= maxSpacing:
             subset = elementsOnPlane.loc[(elementsOnPlane['x'] >= point[0]-h) & (elementsOnPlane['x'] <= point[0]+h) & 
                 (elementsOnPlane['y'] >= point[1]-h) & (elementsOnPlane['y'] <= point[1]+h) & 
                 (elementsOnPlane['z'] >= point[2]-h) & (elementsOnPlane['z'] <= point[2]+h)]
@@ -274,9 +274,9 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
                             for prop in ['Vs', 'Vp', 'rho']:
                                 userMeshData.loc[i, prop] = dfMeshData.loc[geid][prop]
             h = 2*h
-        if userMeshData.loc[i, 'Vs'] == 0:
+        if userMeshData.loc[i, 'rho'] == 0:
             # NOTE: If the point is still can't be found even if h=maxSpacing, it's problematic.
-            # In fact, either Vs, Vp, or rho is 0 is problematic. But checking one of them is enough.
+            # In fact, either Vp or rho is 0 is problematic. But checking one of them is enough.
             raise ValueError(f'No element is found for the point ({point[0]}, {point[1]}, {point[2]}).')
     if MPI_enabled: # Collect the results from all the processors
         if rank > 0 and totalMeshPoints > 0:
