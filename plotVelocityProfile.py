@@ -97,8 +97,12 @@ def getElementsOnPlane(df: pd.DataFrame, xmin: float, xmax: float, ymin: float, 
     return elementsOnPlane, maxSpacing
 
 def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str = 'properties.pdf', 
-        minorTicksIncluded: bool = False) -> None:
-    propsTable = {'Vs': r'$V_s\ (m/s)$', 'Vp': r'$V_p\ (m/s)$', 'rho': r'$\rho\ (kg/m^3)$'}
+        includeMinorTicks: bool = False, cbarTickClearance: float = 0,
+        **kwargs) -> None:
+    # Make the column names case-insensitive
+    vs_col = [col for col in df.columns if col.lower() == 'vs'][0]
+    vp_col = [col for col in df.columns if col.lower() == 'vp'][0]
+    propsTable = {vs_col: r'$V_s\ (m/s)$', vp_col: r'$V_p\ (m/s)$', 'rho': r'$\rho\ (kg/m^3)$'}
     fig, ax = plt.subplots(1, 3, figsize=(20, 5))
     fig.set_tight_layout(True)
     if planeNormal == 'x':
@@ -117,10 +121,10 @@ def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str
     yMin = df[dirs[1]].min()
     yMax = df[dirs[1]].max()
     # Remove air elements (Vs=1e10, Vp=-1.0, rho=0) as defined in Hercules
-    df = df.loc[(df['Vs'] != 1e10) & (df['Vp'] != -1.0) & (df['rho'] != 0)]
+    df = df.loc[(df[vs_col] != 1e10) & (df[vp_col] != -1.0) & (df['rho'] != 0)]
     for i, prop in enumerate(propsTable.keys()):
         scatter = ax[i].scatter(df[dirs[0]], df[dirs[1]], c=df[prop], marker='s', linewidths=0, s=markerSize**2)
-        if minorTicksIncluded:
+        if includeMinorTicks:
             ax[i].set_xticks([xMin, xMax], [int(xMin), int(xMax)], minor=True)
             ax[i].tick_params(axis='x', which='minor', length=20, color='tab:gray', labelcolor='tab:gray')
             ax[i].xaxis.labelpad = -10
@@ -132,7 +136,11 @@ def plotProperties(df: pd.DataFrame, planeNormal: str = 'x', outputFileName: str
         ax[i].set_title(propsTable[prop])
         if planeNormal != 'z':
             ax[i].invert_yaxis()
-        fig.colorbar(scatter, ax=ax[i])
+        cbar = fig.colorbar(scatter, ax=ax[i])
+        vmin = df[prop].min()
+        vmax = df[prop].max()
+        ticks = [vmin, *[tick for tick in cbar.get_ticks() if vmin+cbarTickClearance < tick < vmax-cbarTickClearance], vmax]
+        cbar.set_ticks(ticks)
     fig.savefig(outputFileName)
     return
 
@@ -159,11 +167,10 @@ def createUserMeshPlane(xmin: float, xmax: float, ymin: float, ymax: float, zmin
     userMeshPlane = np.stack((x, y, z), axis=-1).reshape(-1, 3)
     return userMeshPlane, planeNormal
 
-def plot3DVelocityModel(fileName: str, xmin: float, xmax: float, ymin: float, 
+def plot3DVelocityModel(velocityModelPath: str, xmin: float, xmax: float, ymin: float, 
         ymax: float, zmin: float|None = None, zmax: float|None = None, 
-        outputFileName='3DVelocityModelProperties.pdf', 
-        minorTicksIncluded: bool = False) -> None:
-    df = pd.read_csv(fileName)
+        outputFileName='3DVelocityModelProperties.pdf', **kwargs) -> None:
+    df = pd.read_csv(velocityModelPath)
     df = df.loc[(df['x'] >= xmin) & (df['x'] <= xmax) & (df['y'] >= ymin) & (df['y'] <= ymax)]
     if zmin is not None:
         df = df.loc[df['z'] >= zmin]
@@ -179,18 +186,18 @@ def plot3DVelocityModel(fileName: str, xmin: float, xmax: float, ymin: float,
         planeNormal = 'z'
     else:
         ValueError('The user-defined mesh plane should be either in the x-z, y-z, or x-y plane.')
-    plotProperties(df, planeNormal=planeNormal, outputFileName=outputFileName, minorTicksIncluded=minorTicksIncluded)
+    plotProperties(df, planeNormal=planeNormal, outputFileName=outputFileName, **kwargs)
     return
 
-def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float, 
+def plotVelocityProfileWithUserMeshPlane(filePath: str, xmin: float, 
         xmax: float, ymin: float, ymax: float, zmin: float = 0.0, zmax: float|None = None, 
         spacing: float|None = None, zSpacing: float|None = None, method: str = 'fast', 
-        minorTicksIncluded: bool = False) -> None:
+        **kwargs) -> None:
     MPI_enabled, comm, size, rank = get_MPI_data()
     if not MPI_enabled or rank == 0:
         # NOTE: Reading the mesh coordinates from the HDF5 file could be a memory-consuming
         # task. To keep the memory usage low, it is done in the main process (rank 0) only.
-        dfMeshCoordinates = pd.read_hdf(meshDatabaseFilePath, key='meshCoordinates')
+        dfMeshCoordinates = pd.read_hdf(filePath, key='meshCoordinates')
         # NOTE: Pandas allows duplicate indices. To make the searching process faster 
         # in the later steps, the indices are set to the 'geid' column.
         dfMeshCoordinates.set_index('geid', inplace=True)
@@ -199,7 +206,7 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
         # To keep the memory usage low (without using swap memory), delete df and collect the memory back.
         del dfMeshCoordinates
         gc.collect()
-        dfMeshData = pd.read_hdf(meshDatabaseFilePath, key='meshData')
+        dfMeshData = pd.read_hdf(filePath, key='meshData')
         dfMeshData.set_index('geid', inplace=True)
         # ===== Define a mesh plane =====
         if spacing is None:
@@ -287,7 +294,7 @@ def plotVelocityProfileWithUserMeshPlane(meshDatabaseFilePath: str, xmin: float,
             userMeshData.sort_values(by=['x', 'y', 'z'], inplace=True)
     if not MPI_enabled or rank == 0:
         userMeshData.to_csv('userMeshPlane.csv', index=False)
-        plotProperties(userMeshData, planeNormal=planeNormal, minorTicksIncluded=minorTicksIncluded)
+        plotProperties(userMeshData, planeNormal=planeNormal, **kwargs)
     return
 
 if __name__ == '__main__':
@@ -336,6 +343,7 @@ if __name__ == '__main__':
         default='./inputfiles/materialfiles/herculesVelocityModel.csv')
     parser.add_argument('--includeMinorTicks', '-i', action='store_true', help='Include minor ticks in the plot.')
     parser.add_argument('--accurate', '-a', action='store_true', help=accurateHelp)
+    parser.add_argument('--cbarTickClearance', '-c', type=float, help='The minimum clearance of the colorbar ticks.', default=0)
     args = parser.parse_args()
     # ===== Handling the dimensions =====
     if len(args.dimensions) == 4:
@@ -349,17 +357,18 @@ if __name__ == '__main__':
         xmin, xmax, ymin, ymax, zmin, zmax = args.dimensions
     else:
         ValueError('The number of dimensions should be either 4, 5, or 6.')
+    kwargs = vars(args)
+    kwargs.update({'xmin': xmin, 'xmax': xmax, 'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax})
     # ===== Run the target function =====
     if args.target == '3DVelocityModel':
-        plot3DVelocityModel(args.velocityModelPath, xmin, xmax, ymin, ymax, 
-            zmin=zmin, zmax=zmax, minorTicksIncluded=args.includeMinorTicks)
+        plot3DVelocityModel(**kwargs)
     elif args.target == 'MeshDatabase':
-        spacing = args.spacing[0]
-        zSpacing = args.spacing[1]
-        method = 'fast' if not args.accurate else 'accurate'
-        plotVelocityProfileWithUserMeshPlane(args.filePath, xmin, xmax, ymin, ymax, 
-            zmin=zmin, zmax=zmax, spacing=spacing, zSpacing=zSpacing, 
-            method=method, minorTicksIncluded=args.includeMinorTicks)
+        # spacing = args.spacing[0]
+        # zSpacing = args.spacing[1]
+        # method = 'fast' if not args.accurate else 'accurate'
+        kwargs.update({'spacing': args.spacing[0], 'zSpacing': args.spacing[1], 
+            'method': 'fast' if not args.accurate else 'accurate'})
+        plotVelocityProfileWithUserMeshPlane(**kwargs)
 
     """
     In the following examples, the domain used in Hercules is larger than the 
