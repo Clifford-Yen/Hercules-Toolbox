@@ -29,9 +29,11 @@ def getDataFromInputFile(inputFilePath: str) -> dict:
             raise ValueError('Unexpected input file format.')
     return inputData
 
-def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, fps=24, 
-        includeMap=False, mapFile='map.png', threeDMagnitude=False, 
-        parameterFile='inputfiles/parameters.in', **kwargs):
+def plotResponseMagnitude(fileName: str, key: str, response: str = 'velocity', 
+    maxVel: float = 0.5, fps: int = 24, includeMap: bool = False, 
+    mapFile: str = 'map.png', threeDMagnitude: bool = False, 
+    parameterFile: str = 'inputfiles/parameters.in', dpi: float|str = 300, 
+    **kwargs):
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
@@ -146,7 +148,7 @@ def plotResponseMagnitude(fileName, key, response='velocity', maxVel=0.5, fps=24
     print('Creating animation...')
     animation = FuncAnimation(fig, func=updateFrame, frames=progressbar.progressbar(df['timeStep'].unique()), 
         init_func=plotFirstFrame, blit=True, cache_frame_data=False)
-    animation.save(response+'_'+key+'.mp4', writer='ffmpeg', fps=fps)
+    animation.save(response+'_'+key+'.mp4', writer='ffmpeg', fps=fps, dpi=dpi)
 
 if __name__ == '__main__':
     # DEBUGGING: Change the working directory to the directory of this file for debugging
@@ -163,6 +165,7 @@ if __name__ == '__main__':
     parser.add_argument('--maxVel', '-v', type=float, help='Maximum velocity for the colorbar. Default is 0.5 (m/s).', default=0.5)
     parser.add_argument('--numPlanes', '-n', type=int, help='Number of planes to plot. Default is 1 (only plane0 will be plotted).', default=1)
     parser.add_argument('--threeDMagnitude', '-t', action='store_true', help='Plot the magnitude of 3 directional responses. Default is False (only horizontal responses).')
+    parser.add_argument('--dpi', '-d', type=int, help='Dots per inch for the output video. Default is 300.', default=300)
     args = parser.parse_args()
     if args.fps is not None and args.fps < 1:
         raise ValueError('fps should be greater than 0.')
