@@ -1,5 +1,5 @@
 import pandas as pd
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FFMpegWriter
 import numpy as np
 import progressbar
 import argparse
@@ -32,8 +32,8 @@ def getDataFromInputFile(inputFilePath: str) -> dict:
 def plotResponseMagnitude(fileName: str, key: str, response: str = 'velocity', 
     maxVel: float = 0.5, fps: int = 24, includeMap: bool = False, 
     mapFile: str = 'map.png', threeDMagnitude: bool = False, 
-    parameterFile: str = 'inputfiles/parameters.in', dpi: float|str = 300, 
-    **kwargs):
+    parameterFile: str = 'inputfiles/parameters.in', dpi: int|str = 300,
+    figSize: tuple[float, float]|str = 'auto', **kwargs):
     # Read the HDF5 file and load the data into a DataFrame
     df = pd.read_hdf(fileName, key=key)
     if response == 'displacement':
@@ -113,42 +113,42 @@ def plotResponseMagnitude(fileName: str, key: str, response: str = 'velocity',
     ticks = ticks[(ticks > levels[0]) & (ticks < levels[-1])]
     ticks = [levels[0], *ticks, levels[-1]]
     cb.set_ticks(ticks)
+    if figSize == 'auto':
+        yLength = df['y'].max() - df['y'].min()
+        xLength = df['x'].max() - df['x'].min()
+        colorbarWidth = 1.2 # TODO: This is an estimate. May find a better way to calculate this
+        fig.set_size_inches(5+colorbarWidth, xLength/yLength*5)
+    else:
+        fig.set_size_inches(figSize)
     # Include the map if required
     if includeMap:
         plotMap(mapFile, parameterFile, overwriteExisting=False, includeTopography=True, useColorMap=True)
         map = plt.imread(mapFile)
-        # Set the fig size of the plot based on the map
-        colorbarWidth = 1.2 # TODO: This is an estimate. May find a better way to calculate this
-        fig.set_size_inches(5+colorbarWidth, map.shape[0]/map.shape[1]*5)
         # Set the axis limits. This is not necessary if the map is not included
         # since ax.contourf will automatically set the axis limits
         ax.set_xlim(df['y'].min(), df['y'].max())
         ax.set_ylim(df['x'].min(), df['x'].max())
         extent = ax.get_xlim() + ax.get_ylim()
-    # ===== Define the update function for the animation =====
-    def updateFrame(frame):
-        ax.clear() # Clear the previous frame
-        if includeMap: # Plot the map
-            ax.imshow(map, extent=extent, aspect='auto')
-        # Get the data for the current frame
-        frame_data = df[df['timeStep'] == frame]
-        # Turn frame_data['displacement'] into 2D array
-        responseMagnitude = frame_data.pivot(index='x', columns='y', values='response')
-        # Create a 2D contour plot of the displacement magnitude
-        contour = ax.contourf(x, y, responseMagnitude, levels=levels, cmap='jet', extend='max')
-        if includeMap:
-            contour.set_alpha(0.5)
-            contour.set_antialiased(True)
-        plt.title(title+'\nTime: %6.2f s'%(timePoints[frame]))
-        return contour,
-    # ===== Define the initialization function for the animation =====
-    def plotFirstFrame():
-        return updateFrame(frame=0)
-    # Create the animation
+        ax.imshow(map, extent=extent, aspect='equal')
     print('Creating animation...')
-    animation = FuncAnimation(fig, func=updateFrame, frames=progressbar.progressbar(df['timeStep'].unique()), 
-        init_func=plotFirstFrame, blit=True, cache_frame_data=False)
-    animation.save(response+'_'+key+'.mp4', writer='ffmpeg', fps=fps, dpi=dpi)
+    writer = FFMpegWriter(fps=fps, metadata={'title': title, 'artist': 'Hercules Toolbox'})
+    with writer.saving(fig, response+'_'+key+'.mp4', dpi=dpi):
+        for frame in progressbar.progressbar(df['timeStep'].unique()):
+            # Remove previous contour collections if they exist
+            for coll in ax.collections:
+                coll.remove()
+            # Get the data for the current frame
+            frame_data = df[df['timeStep'] == frame]
+            # Turn frame_data['response'] into 2D array
+            responseMagnitude = frame_data.pivot(index='x', columns='y', values='response')
+            # Create a 2D contour plot of the response magnitude
+            contour = ax.contourf(x, y, responseMagnitude, levels=levels, cmap='jet', extend='max')
+            if includeMap:
+                contour.set_alpha(0.5)
+                contour.set_antialiased(True)
+            ax.set_title(title+'\nTime: %6.2f s'%(timePoints[frame]))
+            writer.grab_frame()
+    return
 
 if __name__ == '__main__':
     # DEBUGGING: Change the working directory to the directory of this file for debugging
@@ -166,10 +166,17 @@ if __name__ == '__main__':
     parser.add_argument('--numPlanes', '-n', type=int, help='Number of planes to plot. Default is 1 (only plane0 will be plotted).', default=1)
     parser.add_argument('--threeDMagnitude', '-t', action='store_true', help='Plot the magnitude of 3 directional responses. Default is False (only horizontal responses).')
     parser.add_argument('--dpi', '-d', type=int, help='Dots per inch for the output video. Default is 300.', default=300)
+    parser.add_argument('--figSize', '-s', type=str, help='Figure size in inches. Default is "auto". Type in "(width, height)" syntax.', default='auto')
     args = parser.parse_args()
     if args.fps is not None and args.fps < 1:
         raise ValueError('fps should be greater than 0.')
-    
+    if args.figSize != 'auto':
+        try:
+            figSize = tuple(map(float, args.figSize.strip('()').split(',')))
+            args.figSize = figSize
+        except Exception as e:
+            raise ValueError('Invalid figSize format. Use (width, height) syntax.')
+
     fileName = 'database/planedisplacements.hdf5'
     planesData = pd.read_hdf(fileName, key='/planesData')
     for index in planesData.index:
