@@ -3,7 +3,7 @@ certifi==2024.7.4
 cftime==1.6.4
 contourpy==1.2.1
 cycler==0.12.1
-fonttools==4.53.1
+fonttools~>4.60.2
 kiwisolver==1.4.5
 matplotlib==3.9.2
 mpi4py==4.0.0
