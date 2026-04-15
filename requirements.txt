@@ -14,7 +14,7 @@ numexpr~=2.10.1
 numpy~=2.0.1
 packaging~=24.1
 pandas~=2.2.2
-pillow~>12.1.1
+pillow>=12.2.0
 progressbar2~=4.4.2
 py-cpuinfo~=9.0.0
 pygmt~=0.12.0
