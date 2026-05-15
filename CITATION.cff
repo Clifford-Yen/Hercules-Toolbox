@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use the Hercules Toolbox for your research or data processing, please cite it as below."
+title: "Hercules Toolbox: Post-Processing Utilities for the Hercules Earthquake Simulator"
+authors:
+  - family-names: "Yen"
+    given-names: "Clifford (Chu-Han)"
+    affiliation: "University of California, Los Angeles (UCLA)"
+date-released: 2024-03-12
+url: "https://github.com/Clifford-Yen/Hercules-Toolbox"
+repository-code: "https://github.com/Clifford-Yen/Hercules-Toolbox"
+keywords:
+  - earthquake-simulation
+  - high-performance-computing
+  - finite-element-analysis
+  - post-processing
+  - hdf5
