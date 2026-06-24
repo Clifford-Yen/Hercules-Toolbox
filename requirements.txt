@@ -9,7 +9,7 @@ idna~=3.10
 kiwisolver~=1.4.8
 matplotlib~=3.10.5
 mpi4py~=4.1.0
-msgpack~=1.1.1
+msgpack~>1.2.1
 ndindex~=1.10.0
 netCDF4~=1.7.2
 numexpr~=2.11.0
