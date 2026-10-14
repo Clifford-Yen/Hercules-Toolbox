@@ -32,6 +32,6 @@ tables~=3.10.2
 tqdm~=4.67.1
 typing_extensions~=4.14.1
 tzdata~=2025.2
-urllib3~=2.7.0
+urllib3~>2.8.0
 utm~=0.8.1
 xarray~=2025.7.1
